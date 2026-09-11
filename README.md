@@ -77,3 +77,7 @@ full-width code block cards and block-quote bars itself since
   loading inline, to keep launch fast and dependency-free.
 - `.mdown` / `.mkd` extensions are owned by Typora's own file type on
   systems that have it installed, so they aren't remapped to Tickline.
+
+## License
+
+[MIT](LICENSE)
