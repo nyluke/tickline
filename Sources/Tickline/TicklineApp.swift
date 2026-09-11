@@ -7,5 +7,6 @@ struct TicklineApp: App {
             MarkdownReaderView(text: file.document.text, fileURL: file.fileURL)
         }
         .windowToolbarStyle(.unifiedCompact)
+        .defaultSize(width: 860, height: 920)
     }
 }

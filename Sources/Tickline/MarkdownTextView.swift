@@ -25,6 +25,9 @@ final class MarkdownTextView: NSTextView {
 
     private func drawCustomBlockDecorations() {
         guard let layoutManager, let textContainer, let textStorage else { return }
+        let columnLeft = textContainerOrigin.x + textContainer.lineFragmentPadding
+        let columnRight = textContainerOrigin.x + textContainer.size.width - textContainer.lineFragmentPadding
+
         let full = NSRange(location: 0, length: textStorage.length)
         textStorage.enumerateAttribute(.markdownBlockKind, in: full) { value, range, _ in
             guard let kind = value as? MarkdownBlockKind else { return }
@@ -36,25 +39,23 @@ final class MarkdownTextView: NSTextView {
             switch kind {
             case .codeBlock:
                 var backgroundRect = rect
-                backgroundRect.origin.x = textContainerOrigin.x - textContainer.lineFragmentPadding + 8
-                backgroundRect.size.width = textContainer.size.width + textContainer.lineFragmentPadding * 2 - 16
+                backgroundRect.origin.x = columnLeft - 8
+                backgroundRect.size.width = (columnRight - columnLeft) + 16
                 backgroundRect = backgroundRect.insetBy(dx: 0, dy: -4)
                 let path = NSBezierPath(roundedRect: backgroundRect, xRadius: 8, yRadius: 8)
                 MarkdownTheme.codeBackgroundColor.setFill()
                 path.fill()
             case .blockQuote:
                 var barRect = rect
-                barRect.origin.x = textContainerOrigin.x - textContainer.lineFragmentPadding + 8
+                barRect.origin.x = rect.origin.x - 14
                 barRect.size.width = 3
                 MarkdownTheme.quoteBarColor.setFill()
                 NSBezierPath(rect: barRect).fill()
             case .rule:
                 let y = rect.midY
                 let path = NSBezierPath()
-                let x0 = textContainerOrigin.x
-                let x1 = textContainerOrigin.x + textContainer.size.width
-                path.move(to: NSPoint(x: x0, y: y))
-                path.line(to: NSPoint(x: x1, y: y))
+                path.move(to: NSPoint(x: columnLeft, y: y))
+                path.line(to: NSPoint(x: columnRight, y: y))
                 path.lineWidth = 1
                 MarkdownTheme.ruleColor.setStroke()
                 path.stroke()

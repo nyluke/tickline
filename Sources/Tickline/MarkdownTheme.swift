@@ -38,6 +38,10 @@ enum MarkdownTheme {
             ? NSColor(white: 1.0, alpha: 0.08)
             : NSColor(white: 0.0, alpha: 0.045)
     }}
-    static var quoteBarColor: NSColor { .tertiaryLabelColor }
+    static var quoteBarColor: NSColor { .init(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(white: 1.0, alpha: 0.35)
+            : NSColor(white: 0.0, alpha: 0.25)
+    }}
     static var ruleColor: NSColor { .separatorColor }
 }
