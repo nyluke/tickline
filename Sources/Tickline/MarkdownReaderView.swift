@@ -6,10 +6,22 @@ struct MarkdownReaderView: View {
     let text: String
     let fileURL: URL?
 
+    @ObservedObject private var appearance = AppearanceManager.shared
+
     var body: some View {
         MarkdownScrollView(text: text, fileURL: fileURL)
             .background(Color(nsColor: .textBackgroundColor))
             .frame(minWidth: 420, minHeight: 320)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        appearance.toggle()
+                    } label: {
+                        Image(systemName: appearance.mode.icon)
+                    }
+                    .help("Switch to \(appearance.mode.toggled.label) appearance")
+                }
+            }
     }
 }
 
