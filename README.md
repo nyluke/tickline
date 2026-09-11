@@ -11,10 +11,27 @@ A fast, native Markdown *reader* for macOS — like Typora, minus the editor.
 - Opens fast: it's just AppKit text rendering, so cold launch is well under
   a second.
 - Sets itself as the default app for `.md` / `.markdown` / `.mkdn` files.
+- Light/dark appearance toggle (toolbar button or the Appearance menu),
+  independent of your system setting — defaults to light.
 
 It intentionally doesn't edit or save — it's a viewer, not an IDE.
 
 ## Install
+
+### Option 1: download the app
+
+Grab the `.dmg` from the [latest release](https://github.com/nyluke/tickline/releases/latest),
+open it, and drag Tickline into Applications.
+
+Tickline isn't notarized (no Apple Developer Program membership behind
+this project), so Gatekeeper will refuse to open it with a plain
+double-click the first time. Instead: **right-click (or Control-click)
+Tickline.app → Open**, then confirm in the dialog that appears. After
+that, it opens normally. You'll also want to set it as the default
+`.md` handler yourself: right-click a Markdown file → Get Info → "Open
+with:" → Tickline → **Change All...**.
+
+### Option 2: build from source
 
 Requires the Swift toolchain (Xcode or just the Command Line Tools) and
 [Homebrew](https://brew.sh) for [`duti`](https://github.com/moretension/duti)
@@ -29,13 +46,11 @@ cd tickline
 
 This builds a release binary, assembles `Tickline.app`, ad-hoc code-signs
 it, installs it to `/Applications`, and sets it as the default handler for
-Markdown files.
+Markdown files automatically — no Gatekeeper prompt, since it's built
+locally rather than downloaded.
 
-To just build without installing:
-
-```sh
-./Scripts/build-app.sh   # -> build/Tickline.app
-```
+Other scripts: `./Scripts/build-app.sh` just builds `build/Tickline.app`
+without installing it; `./Scripts/make-dmg.sh` packages a release `.dmg`.
 
 ## How it's built
 
