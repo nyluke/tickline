@@ -24,12 +24,19 @@ Grab the `.dmg` from the [latest release](https://github.com/nyluke/tickline/rel
 open it, and drag Tickline into Applications.
 
 Tickline isn't notarized (no Apple Developer Program membership behind
-this project), so Gatekeeper will refuse to open it with a plain
-double-click the first time. Instead: **right-click (or Control-click)
-Tickline.app → Open**, then confirm in the dialog that appears. After
-that, it opens normally. You'll also want to set it as the default
-`.md` handler yourself: right-click a Markdown file → Get Info → "Open
-with:" → Tickline → **Change All...**.
+this project) and is only ad-hoc code-signed, so Gatekeeper will refuse
+to open it — and on current macOS, right-click → Open does **not**
+bypass this the way it does for apps that are Developer ID–signed but
+just not notarized. The reliable fix is one Terminal command, run once
+after moving it to Applications:
+
+```sh
+xattr -cr /Applications/Tickline.app
+```
+
+Then open it normally. You'll also want to set it as the default `.md`
+handler yourself: right-click a Markdown file → Get Info → "Open with:"
+→ Tickline → **Change All...**.
 
 ### Option 2: build from source
 
