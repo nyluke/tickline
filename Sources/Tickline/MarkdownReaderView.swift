@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import TicklineKit
 
 /// Top-level SwiftUI view shown for an open document.
 struct MarkdownReaderView: View {

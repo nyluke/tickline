@@ -59,14 +59,45 @@ locally rather than downloaded.
 Other scripts: `./Scripts/build-app.sh` just builds `build/Tickline.app`
 without installing it; `./Scripts/make-dmg.sh` packages a release `.dmg`.
 
+## iPhone app
+
+There's an iOS counterpart under [`iOS/`](iOS) that shares the Markdown
+parsing/rendering code with the Mac app (see below) but has its own
+UIKit-based text view and app shell. It opens one `.md` file at a time —
+tap a Markdown file in Files, Mail, AirDrop, etc. and it opens in
+Tickline, the same way the Mac app works.
+
+To run it on your own iPhone:
+
+1. Install Xcode (from the App Store) if you haven't already — a plain
+   Swift toolchain isn't enough for iOS, since device installs require
+   Xcode's code signing.
+2. Open `iOS/Tickline.xcodeproj`.
+3. Select the `Tickline` target, go to **Signing & Capabilities**, and
+   pick your Apple ID under **Team** (add it first via Xcode → Settings →
+   Accounts if it's not listed).
+4. Plug in your iPhone, select it as the run destination, and hit Run.
+
+Like the Mac app, this isn't going through TestFlight or the App Store,
+so with a free Apple ID the install expires after about 7 days — just
+re-run from Xcode to refresh it. A paid Apple Developer Program
+membership avoids that if you'd rather not repeat the step.
+
 ## How it's built
 
-No Xcode project — just [Swift Package Manager](Package.swift) and a
-hand-written `Info.plist`. [`swift-markdown`](https://github.com/swiftlang/swift-markdown)
-parses the document; a `MarkupVisitor` (`Sources/Tickline/MarkdownRenderer.swift`)
-walks the tree and builds a styled `NSAttributedString`, which a custom
-`NSTextView` (`Sources/Tickline/MarkdownTextView.swift`) renders, drawing the
-full-width code block cards and block-quote bars itself since
+The Mac app has no Xcode project of its own — just
+[Swift Package Manager](Package.swift) and a hand-written `Info.plist`.
+The parsing/rendering core lives in the `TicklineKit` library target
+(`Sources/TicklineKit`), shared with the iOS app: `MarkdownDocument`
+loads the file, a `MarkupVisitor` (`MarkdownRenderer.swift`) built on
+[`swift-markdown`](https://github.com/swiftlang/swift-markdown) walks the
+parsed tree and builds a styled `NSAttributedString`, and a
+`PlatformFont`/`PlatformColor`/`PlatformImage` typealias layer
+(`PlatformTypes.swift`) is the only thing standing between that and
+AppKit vs. UIKit. Each platform then supplies its own text view — a
+custom `NSTextView` on the Mac (`Sources/Tickline/MarkdownTextView.swift`)
+and `UITextView` on iOS (`iOS/Tickline/MarkdownTextView.swift`) — that
+draws the full-width code block cards and block-quote bars itself, since
 `NSAttributedString.backgroundColor` only paints behind glyphs.
 
 ## Known limitations

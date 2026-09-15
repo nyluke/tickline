@@ -1,4 +1,5 @@
 import SwiftUI
+import TicklineKit
 
 @main
 struct TicklineApp: App {

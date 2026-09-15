@@ -1,17 +1,21 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// An image attachment that scales itself down to fit the available line
 /// width (and a sane max height), recomputed on every layout pass so images
 /// stay well-behaved as the window is resized.
-final class ScaledImageAttachment: NSTextAttachment {
+public final class ScaledImageAttachment: NSTextAttachment {
     static let maxHeight: CGFloat = 480
 
-    override func attachmentBounds(
+    public override func attachmentBounds(
         for textContainer: NSTextContainer?,
-        proposedLineFragment lineFrag: NSRect,
-        glyphPosition position: NSPoint,
+        proposedLineFragment lineFrag: CGRect,
+        glyphPosition position: CGPoint,
         characterIndex charIndex: Int
-    ) -> NSRect {
+    ) -> CGRect {
         guard let size = image?.size, size.width > 0, size.height > 0 else {
             return super.attachmentBounds(
                 for: textContainer,
@@ -27,6 +31,6 @@ final class ScaledImageAttachment: NSTextAttachment {
             height = Self.maxHeight
             width = height * size.width / size.height
         }
-        return NSRect(x: 0, y: 0, width: width, height: height)
+        return CGRect(x: 0, y: 0, width: width, height: height)
     }
 }

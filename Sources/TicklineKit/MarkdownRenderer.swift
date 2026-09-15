@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import Markdown
 
 /// Walks a parsed Markdown tree and builds a styled `NSAttributedString`.
@@ -9,23 +13,23 @@ import Markdown
 /// Pure containers (document, block quote, lists, list items) just
 /// concatenate their already-self-terminated children. This keeps every
 /// block responsible for its own vertical rhythm.
-struct MarkdownRenderer: MarkupVisitor {
+public struct MarkdownRenderer: MarkupVisitor {
     private let baseURL: URL?
     private var listDepth = 0
     private var quoteDepth = 0
 
-    init(baseURL: URL?) {
+    public init(baseURL: URL?) {
         self.baseURL = baseURL
     }
 
-    mutating func render(source: String) -> NSAttributedString {
+    public mutating func render(source: String) -> NSAttributedString {
         let document = Markdown.Document(parsing: source)
         return visit(document)
     }
 
     // MARK: - Containers
 
-    mutating func defaultVisit(_ markup: Markup) -> NSMutableAttributedString {
+    public mutating func defaultVisit(_ markup: Markup) -> NSMutableAttributedString {
         let result = NSMutableAttributedString()
         for child in markup.children {
             result.append(visit(child))
@@ -33,11 +37,11 @@ struct MarkdownRenderer: MarkupVisitor {
         return result
     }
 
-    mutating func visitDocument(_ document: Markdown.Document) -> NSMutableAttributedString {
+    public mutating func visitDocument(_ document: Markdown.Document) -> NSMutableAttributedString {
         defaultVisit(document)
     }
 
-    mutating func visitBlockQuote(_ blockQuote: BlockQuote) -> NSMutableAttributedString {
+    public mutating func visitBlockQuote(_ blockQuote: BlockQuote) -> NSMutableAttributedString {
         quoteDepth += 1
         let inner = NSMutableAttributedString()
         for child in blockQuote.children {
@@ -61,7 +65,7 @@ struct MarkdownRenderer: MarkupVisitor {
 
     // MARK: - Lists
 
-    mutating func visitUnorderedList(_ list: UnorderedList) -> NSMutableAttributedString {
+    public mutating func visitUnorderedList(_ list: UnorderedList) -> NSMutableAttributedString {
         listDepth += 1
         defer { listDepth -= 1 }
         let bullets = ["•", "◦", "▪︎"]
@@ -76,7 +80,7 @@ struct MarkdownRenderer: MarkupVisitor {
         return result
     }
 
-    mutating func visitOrderedList(_ list: OrderedList) -> NSMutableAttributedString {
+    public mutating func visitOrderedList(_ list: OrderedList) -> NSMutableAttributedString {
         listDepth += 1
         defer { listDepth -= 1 }
 
@@ -142,7 +146,7 @@ struct MarkdownRenderer: MarkupVisitor {
 
     // MARK: - Leaf blocks
 
-    mutating func visitParagraph(_ paragraph: Paragraph) -> NSMutableAttributedString {
+    public mutating func visitParagraph(_ paragraph: Paragraph) -> NSMutableAttributedString {
         let inline = NSMutableAttributedString()
         for child in paragraph.children {
             inline.append(visit(child))
@@ -157,7 +161,7 @@ struct MarkdownRenderer: MarkupVisitor {
         return inline
     }
 
-    mutating func visitHeading(_ heading: Heading) -> NSMutableAttributedString {
+    public mutating func visitHeading(_ heading: Heading) -> NSMutableAttributedString {
         let content = NSMutableAttributedString()
         for child in heading.children {
             content.append(visit(child))
@@ -175,7 +179,7 @@ struct MarkdownRenderer: MarkupVisitor {
         return content
     }
 
-    func visitCodeBlock(_ codeBlock: CodeBlock) -> NSMutableAttributedString {
+    public func visitCodeBlock(_ codeBlock: CodeBlock) -> NSMutableAttributedString {
         var code = codeBlock.code
         if code.hasSuffix("\n") { code.removeLast() }
 
@@ -198,9 +202,9 @@ struct MarkdownRenderer: MarkupVisitor {
         return result
     }
 
-    func visitThematicBreak(_ thematicBreak: ThematicBreak) -> NSMutableAttributedString {
+    public func visitThematicBreak(_ thematicBreak: ThematicBreak) -> NSMutableAttributedString {
         let result = NSMutableAttributedString(string: "\u{200B}\n", attributes: [
-            .font: NSFont.systemFont(ofSize: 2),
+            .font: PlatformFont.systemFont(ofSize: 2),
             .markdownBlockKind: MarkdownBlockKind.rule
         ])
         let style = NSMutableParagraphStyle()
@@ -209,13 +213,13 @@ struct MarkdownRenderer: MarkupVisitor {
         return result
     }
 
-    func visitHTMLBlock(_ html: HTMLBlock) -> NSMutableAttributedString {
+    public func visitHTMLBlock(_ html: HTMLBlock) -> NSMutableAttributedString {
         NSMutableAttributedString()
     }
 
     // MARK: - Tables (plain monospace fallback — good enough for a reader)
 
-    func visitTable(_ table: Markdown.Table) -> NSMutableAttributedString {
+    public func visitTable(_ table: Markdown.Table) -> NSMutableAttributedString {
         var rows: [[String]] = []
         for child in table.children {
             if let head = child as? Markdown.Table.Head {
@@ -270,28 +274,28 @@ struct MarkdownRenderer: MarkupVisitor {
 
     // MARK: - Inline
 
-    func visitText(_ text: Markdown.Text) -> NSMutableAttributedString {
+    public func visitText(_ text: Markdown.Text) -> NSMutableAttributedString {
         NSMutableAttributedString(string: text.string, attributes: [
             .font: MarkdownTheme.bodyFont,
             .foregroundColor: MarkdownTheme.textColor
         ])
     }
 
-    mutating func visitEmphasis(_ emphasis: Emphasis) -> NSMutableAttributedString {
+    public mutating func visitEmphasis(_ emphasis: Emphasis) -> NSMutableAttributedString {
         let content = NSMutableAttributedString()
         for child in emphasis.children { content.append(visit(child)) }
-        restyleFonts(in: content) { NSFontManager.shared.convert($0, toHaveTrait: .italicFontMask) }
+        restyleFonts(in: content, transform: platformItalicFont(from:))
         return content
     }
 
-    mutating func visitStrong(_ strong: Strong) -> NSMutableAttributedString {
+    public mutating func visitStrong(_ strong: Strong) -> NSMutableAttributedString {
         let content = NSMutableAttributedString()
         for child in strong.children { content.append(visit(child)) }
-        restyleFonts(in: content) { NSFontManager.shared.convert($0, toHaveTrait: .boldFontMask) }
+        restyleFonts(in: content, transform: platformBoldFont(from:))
         return content
     }
 
-    mutating func visitStrikethrough(_ strikethrough: Strikethrough) -> NSMutableAttributedString {
+    public mutating func visitStrikethrough(_ strikethrough: Strikethrough) -> NSMutableAttributedString {
         let content = NSMutableAttributedString()
         for child in strikethrough.children { content.append(visit(child)) }
         content.addAttribute(
@@ -302,7 +306,7 @@ struct MarkdownRenderer: MarkupVisitor {
         return content
     }
 
-    func visitInlineCode(_ inlineCode: InlineCode) -> NSMutableAttributedString {
+    public func visitInlineCode(_ inlineCode: InlineCode) -> NSMutableAttributedString {
         NSMutableAttributedString(string: inlineCode.code, attributes: [
             .font: MarkdownTheme.codeFont,
             .foregroundColor: MarkdownTheme.textColor,
@@ -310,7 +314,7 @@ struct MarkdownRenderer: MarkupVisitor {
         ])
     }
 
-    mutating func visitLink(_ link: Markdown.Link) -> NSMutableAttributedString {
+    public mutating func visitLink(_ link: Markdown.Link) -> NSMutableAttributedString {
         let content = NSMutableAttributedString()
         for child in link.children { content.append(visit(child)) }
         if let destination = link.destination, let url = resolveURL(destination) {
@@ -318,16 +322,18 @@ struct MarkdownRenderer: MarkupVisitor {
             content.addAttribute(.link, value: url, range: full)
             content.addAttribute(.foregroundColor, value: MarkdownTheme.linkColor, range: full)
             content.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: full)
+            #if canImport(AppKit)
             content.addAttribute(.cursor, value: NSCursor.pointingHand, range: full)
+            #endif
         }
         return content
     }
 
-    func visitImage(_ image: Markdown.Image) -> NSMutableAttributedString {
+    public func visitImage(_ image: Markdown.Image) -> NSMutableAttributedString {
         guard let source = image.source, let url = resolveURL(source) else {
             return NSMutableAttributedString()
         }
-        guard url.isFileURL, let nsImage = NSImage(contentsOf: url) else {
+        guard url.isFileURL, let platformImage = PlatformImage(fileURL: url) else {
             // Remote images are intentionally out of scope for a fast,
             // dependency-free reader — show a small clickable link instead.
             let altText = plainText(image)
@@ -340,28 +346,28 @@ struct MarkdownRenderer: MarkupVisitor {
             return content
         }
         let attachment = ScaledImageAttachment()
-        attachment.image = nsImage
+        attachment.image = platformImage
         return NSMutableAttributedString(attachment: attachment)
     }
 
-    func visitLineBreak(_ lineBreak: LineBreak) -> NSMutableAttributedString {
+    public func visitLineBreak(_ lineBreak: LineBreak) -> NSMutableAttributedString {
         NSMutableAttributedString(string: "\n", attributes: [.font: MarkdownTheme.bodyFont])
     }
 
-    func visitSoftBreak(_ softBreak: SoftBreak) -> NSMutableAttributedString {
+    public func visitSoftBreak(_ softBreak: SoftBreak) -> NSMutableAttributedString {
         NSMutableAttributedString(string: " ", attributes: [.font: MarkdownTheme.bodyFont])
     }
 
-    func visitInlineHTML(_ inlineHTML: InlineHTML) -> NSMutableAttributedString {
+    public func visitInlineHTML(_ inlineHTML: InlineHTML) -> NSMutableAttributedString {
         NSMutableAttributedString()
     }
 
     // MARK: - Helpers
 
-    private func restyleFonts(in content: NSMutableAttributedString, transform: (NSFont) -> NSFont) {
+    private func restyleFonts(in content: NSMutableAttributedString, transform: (PlatformFont) -> PlatformFont) {
         let full = NSRange(location: 0, length: content.length)
         content.enumerateAttribute(.font, in: full) { value, range, _ in
-            let base = (value as? NSFont) ?? MarkdownTheme.bodyFont
+            let base = (value as? PlatformFont) ?? MarkdownTheme.bodyFont
             content.addAttribute(.font, value: transform(base), range: range)
         }
     }
