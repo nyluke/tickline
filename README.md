@@ -111,9 +111,10 @@ when the Mac app copies it.
 ## Known limitations
 
 - On iOS, tables render as an aligned monospace grid rather than a real
-  ruled table. (The Mac app lays them out as real tables.) In a narrow
-  window, a Mac table's columns shrink in proportion, which can split a
-  long word across lines.
+  ruled table. (The Mac app lays them out as real tables.) When a Mac
+  window is too narrow for every column to fit its longest word, the
+  columns holding the longest words or paths get narrowed until those
+  words break across lines.
 - Remote (`http`/`https`) images show as a clickable link rather than
   loading inline, to keep launch fast and dependency-free.
 - `.mdown` / `.mkd` extensions are owned by Typora's own file type on

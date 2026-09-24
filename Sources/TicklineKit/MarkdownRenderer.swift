@@ -316,8 +316,8 @@ public struct MarkdownRenderer: MarkupVisitor {
 
     #if canImport(AppKit)
     /// Lays a table out as an AppKit text table, styled like VS Code's
-    /// preview: each column as wide as its content (shrinking and wrapping
-    /// proportionally when the window is narrower), a bold header with a
+    /// preview: each column as wide as its content (wrapping when the window
+    /// is narrower, sized by `MarkdownTextTable`), a bold header with a
     /// heavy rule under it, and a light rule between body rows.
     private mutating func renderTextTable(
         _ cells: [[Markdown.Table.Cell]],
@@ -343,13 +343,11 @@ public struct MarkdownRenderer: MarkupVisitor {
             }
             contents.append(rowContents)
         }
-        let columnWidths = (0..<columnCount).map { column in
-            ceil(contents.map { $0[column].size().width }.max() ?? 0) + 1
-        }
 
-        let textTable = NSTextTable()
+        let textTable = MarkdownTextTable()
         textTable.numberOfColumns = columnCount
         textTable.collapsesBorders = true
+        textTable.measureColumns(of: contents)
 
         let result = NSMutableAttributedString()
         for (rowIndex, rowContents) in contents.enumerated() {
@@ -361,13 +359,10 @@ public struct MarkdownRenderer: MarkupVisitor {
                     startingColumn: column,
                     columnSpan: 1
                 )
-                // Without a width on the table itself, the automatic layout
-                // treats these as preferred column widths.
-                block.setValue(columnWidths[column], type: .absoluteValueType, for: .width)
                 block.setWidth(5, type: .absoluteValueType, for: .padding, edge: .minY)
                 block.setWidth(5, type: .absoluteValueType, for: .padding, edge: .maxY)
-                block.setWidth(10, type: .absoluteValueType, for: .padding, edge: .minX)
-                block.setWidth(10, type: .absoluteValueType, for: .padding, edge: .maxX)
+                block.setWidth(MarkdownTextTable.cellPadding, type: .absoluteValueType, for: .padding, edge: .minX)
+                block.setWidth(MarkdownTextTable.cellPadding, type: .absoluteValueType, for: .padding, edge: .maxX)
                 if rowIndex == 0 {
                     block.setWidth(1, type: .absoluteValueType, for: .border, edge: .maxY)
                     block.setBorderColor(MarkdownTheme.tableHeaderRuleColor, for: .maxY)
