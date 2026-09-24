@@ -17,6 +17,9 @@ public struct MarkdownRenderer: MarkupVisitor {
     private let baseURL: URL?
     private var listDepth = 0
     private var quoteDepth = 0
+    /// Containers enclosing the block being visited, outermost first.
+    private var containers: [MarkdownBlockContext.Container] = []
+    private var nextBlockID = 0
 
     public init(baseURL: URL?) {
         self.baseURL = baseURL
@@ -43,10 +46,12 @@ public struct MarkdownRenderer: MarkupVisitor {
 
     public mutating func visitBlockQuote(_ blockQuote: BlockQuote) -> NSMutableAttributedString {
         quoteDepth += 1
+        pushContainer(.blockQuote)
         let inner = NSMutableAttributedString()
         for child in blockQuote.children {
             inner.append(visit(child))
         }
+        containers.removeLast()
         quoteDepth -= 1
 
         let indent: CGFloat = 20 * CGFloat(quoteDepth + 1)
@@ -67,31 +72,43 @@ public struct MarkdownRenderer: MarkupVisitor {
 
     public mutating func visitUnorderedList(_ list: UnorderedList) -> NSMutableAttributedString {
         listDepth += 1
-        defer { listDepth -= 1 }
+        pushContainer(.list(ordered: false))
+        defer {
+            containers.removeLast()
+            listDepth -= 1
+        }
         let bullets = ["•", "◦", "▪︎"]
         let bullet = bullets[(listDepth - 1) % bullets.count]
 
         let result = NSMutableAttributedString()
+        var number = 1
         for child in list.children {
             guard let item = child as? ListItem else { continue }
             let marker = markerText(for: item, defaultMarker: bullet)
-            result.append(renderListItem(item, marker: marker))
+            result.append(renderListItem(item, marker: marker, number: number))
+            number += 1
         }
+        addSpacingAfterList(to: result)
         return result
     }
 
     public mutating func visitOrderedList(_ list: OrderedList) -> NSMutableAttributedString {
         listDepth += 1
-        defer { listDepth -= 1 }
+        pushContainer(.list(ordered: true))
+        defer {
+            containers.removeLast()
+            listDepth -= 1
+        }
 
         let result = NSMutableAttributedString()
         var number = Int(list.startIndex)
         for child in list.children {
             guard let item = child as? ListItem else { continue }
             let marker = markerText(for: item, defaultMarker: "\(number).")
-            result.append(renderListItem(item, marker: marker))
+            result.append(renderListItem(item, marker: marker, number: number))
             number += 1
         }
+        addSpacingAfterList(to: result)
         return result
     }
 
@@ -103,21 +120,50 @@ public struct MarkdownRenderer: MarkupVisitor {
         }
     }
 
-    private mutating func renderListItem(_ item: ListItem, marker: String) -> NSMutableAttributedString {
-        let indentUnit: CGFloat = 24
-        let headIndent = indentUnit * CGFloat(listDepth)
-        let firstLineIndent = headIndent - indentUnit + 8
+    private mutating func renderListItem(_ item: ListItem, marker: String, number: Int) -> NSMutableAttributedString {
+        let isTask = item.checkbox != nil
+        pushContainer(.listItem(number: number, isTask: isTask))
+        defer { containers.removeLast() }
+
+        let indent = MarkdownTheme.listIndent
+        let headIndent = indent * CGFloat(listDepth)
+        #if canImport(AppKit)
+        // Right-align the marker just left of the text, as browsers do, so
+        // "9." and "10." end at the same place.
+        let markerPrefix = "\t"
+        let firstLineIndent = headIndent - indent
+        let tabStops = [
+            NSTextTab(textAlignment: .right, location: headIndent - 6),
+            NSTextTab(textAlignment: .left, location: headIndent)
+        ]
+        #elseif canImport(UIKit)
+        let markerPrefix = ""
+        let firstLineIndent = headIndent - indent + 8
+        let tabStops = [NSTextTab(textAlignment: .left, location: headIndent)]
+        #endif
 
         let result = NSMutableAttributedString()
         var isFirstBlock = true
-        for child in item.children {
+        let children = Array(item.children)
+        for (index, child) in children.enumerated() {
             if let paragraph = child as? Paragraph {
+                // A paragraph followed by another paragraph or a code block
+                // in the same item gets paragraph spacing; one followed by a
+                // nested list, or ending the item, doesn't.
+                let next = index + 1 < children.count ? children[index + 1] : nil
+                let spacingAfter = next == nil || next is ListItemContainer
+                    ? MarkdownTheme.listItemSpacing
+                    : MarkdownTheme.listParagraphSpacing
                 let inline = NSMutableAttributedString()
                 if isFirstBlock {
-                    inline.append(NSAttributedString(string: marker + "\t", attributes: [
+                    var markerAttributes: [NSAttributedString.Key: Any] = [
                         .font: MarkdownTheme.bodyFont,
                         .foregroundColor: MarkdownTheme.secondaryTextColor
-                    ]))
+                    ]
+                    if !isTask {
+                        markerAttributes[.markdownListMarker] = true
+                    }
+                    inline.append(NSAttributedString(string: markerPrefix + marker + "\t", attributes: markerAttributes))
                 }
                 for grandchild in paragraph.children {
                     inline.append(visit(grandchild))
@@ -128,11 +174,12 @@ public struct MarkdownRenderer: MarkupVisitor {
                     style.lineHeightMultiple = MarkdownTheme.lineHeightMultiple
                     style.headIndent = headIndent
                     style.firstLineHeadIndent = isFirstBlock ? firstLineIndent : headIndent
-                    style.tabStops = [NSTextTab(textAlignment: .left, location: headIndent)]
+                    style.tabStops = tabStops
                     style.defaultTabInterval = headIndent
-                    style.paragraphSpacing = isLast ? 6 : 0
+                    style.paragraphSpacing = isLast ? spacingAfter : 0
                     return style
                 }
+                tag(inline, as: .paragraph)
                 result.append(inline)
                 isFirstBlock = false
             } else {
@@ -158,6 +205,7 @@ public struct MarkdownRenderer: MarkupVisitor {
             style.paragraphSpacing = isLast ? MarkdownTheme.paragraphSpacing : 0
             return style
         }
+        tag(inline, as: .paragraph)
         return inline
     }
 
@@ -173,13 +221,33 @@ public struct MarkdownRenderer: MarkupVisitor {
 
         let spacing = MarkdownTheme.headingSpacing(level: heading.level)
         let style = NSMutableParagraphStyle()
-        style.lineHeightMultiple = 1.15
+        style.lineHeightMultiple = MarkdownTheme.headingLineHeightMultiple
+        style.paragraphSpacingBefore = spacing.before
         style.paragraphSpacing = spacing.after
+        #if canImport(AppKit)
+        if MarkdownTheme.headingHasRule(level: heading.level) {
+            // A text block draws the rule across the full column, 0.3em
+            // below the text as in VS Code. Its margins take over the
+            // paragraph spacing so the rule sits between them.
+            let block = NSTextBlock()
+            block.setValue(100, type: .percentageValueType, for: .width)
+            let fontSize = MarkdownTheme.headingFont(level: heading.level).pointSize
+            block.setWidth(0.3 * fontSize, type: .absoluteValueType, for: .padding, edge: .maxY)
+            block.setWidth(1, type: .absoluteValueType, for: .border, edge: .maxY)
+            block.setBorderColor(MarkdownTheme.ruleColor, for: .maxY)
+            block.setWidth(spacing.before, type: .absoluteValueType, for: .margin, edge: .minY)
+            block.setWidth(spacing.after, type: .absoluteValueType, for: .margin, edge: .maxY)
+            style.textBlocks = [block]
+            style.paragraphSpacingBefore = 0
+            style.paragraphSpacing = 0
+        }
+        #endif
         content.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: content.length))
+        tag(content, as: .heading(level: heading.level))
         return content
     }
 
-    public func visitCodeBlock(_ codeBlock: CodeBlock) -> NSMutableAttributedString {
+    public mutating func visitCodeBlock(_ codeBlock: CodeBlock) -> NSMutableAttributedString {
         var code = codeBlock.code
         if code.hasSuffix("\n") { code.removeLast() }
 
@@ -199,10 +267,11 @@ public struct MarkdownRenderer: MarkupVisitor {
             style.paragraphSpacing = isLast ? MarkdownTheme.paragraphSpacing : 0
             return style
         }
+        tag(result, as: .codeBlock)
         return result
     }
 
-    public func visitThematicBreak(_ thematicBreak: ThematicBreak) -> NSMutableAttributedString {
+    public mutating func visitThematicBreak(_ thematicBreak: ThematicBreak) -> NSMutableAttributedString {
         let result = NSMutableAttributedString(string: "\u{200B}\n", attributes: [
             .font: PlatformFont.systemFont(ofSize: 2),
             .markdownBlockKind: MarkdownBlockKind.rule
@@ -210,6 +279,7 @@ public struct MarkdownRenderer: MarkupVisitor {
         let style = NSMutableParagraphStyle()
         style.paragraphSpacing = MarkdownTheme.paragraphSpacing
         result.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: result.length))
+        tag(result, as: .rule)
         return result
     }
 
@@ -217,23 +287,121 @@ public struct MarkdownRenderer: MarkupVisitor {
         NSMutableAttributedString()
     }
 
-    // MARK: - Tables (plain monospace fallback — good enough for a reader)
+    // MARK: - Tables
 
-    public func visitTable(_ table: Markdown.Table) -> NSMutableAttributedString {
-        var rows: [[String]] = []
+    public mutating func visitTable(_ table: Markdown.Table) -> NSMutableAttributedString {
+        var cells: [[Markdown.Table.Cell]] = []
         for child in table.children {
             if let head = child as? Markdown.Table.Head {
-                rows.append(head.children.compactMap { ($0 as? Markdown.Table.Cell).map(plainText) })
+                cells.append(head.children.compactMap { $0 as? Markdown.Table.Cell })
             } else if let body = child as? Markdown.Table.Body {
                 for rowChild in body.children {
                     if let row = rowChild as? Markdown.Table.Row {
-                        rows.append(row.children.compactMap { ($0 as? Markdown.Table.Cell).map(plainText) })
+                        cells.append(row.children.compactMap { $0 as? Markdown.Table.Cell })
                     }
                 }
             }
         }
+        let rows = cells.map { $0.map(plainText) }
         guard !rows.isEmpty else { return NSMutableAttributedString() }
 
+        #if canImport(AppKit)
+        let result = renderTextTable(cells, alignments: table.columnAlignments)
+        #elseif canImport(UIKit)
+        let result = renderGridTable(rows)
+        #endif
+        tag(result, as: .table(rows: rows))
+        return result
+    }
+
+    #if canImport(AppKit)
+    /// Lays a table out as an AppKit text table, styled like VS Code's
+    /// preview: each column as wide as its content (shrinking and wrapping
+    /// proportionally when the window is narrower), a bold header with a
+    /// heavy rule under it, and a light rule between body rows.
+    private mutating func renderTextTable(
+        _ cells: [[Markdown.Table.Cell]],
+        alignments: [Markdown.Table.ColumnAlignment?]
+    ) -> NSMutableAttributedString {
+        let columnCount = cells.map(\.count).max() ?? 0
+
+        // Render every cell first so each column can be sized to its content.
+        var contents: [[NSMutableAttributedString]] = []
+        for (rowIndex, row) in cells.enumerated() {
+            var rowContents: [NSMutableAttributedString] = []
+            for column in 0..<columnCount {
+                let content = NSMutableAttributedString()
+                if column < row.count {
+                    for child in row[column].children {
+                        content.append(visit(child))
+                    }
+                }
+                if rowIndex == 0 {
+                    restyleFonts(in: content, transform: platformBoldFont(from:))
+                }
+                rowContents.append(content)
+            }
+            contents.append(rowContents)
+        }
+        let columnWidths = (0..<columnCount).map { column in
+            ceil(contents.map { $0[column].size().width }.max() ?? 0) + 1
+        }
+
+        let textTable = NSTextTable()
+        textTable.numberOfColumns = columnCount
+        textTable.collapsesBorders = true
+
+        let result = NSMutableAttributedString()
+        for (rowIndex, rowContents) in contents.enumerated() {
+            for (column, content) in rowContents.enumerated() {
+                let block = NSTextTableBlock(
+                    table: textTable,
+                    startingRow: rowIndex,
+                    rowSpan: 1,
+                    startingColumn: column,
+                    columnSpan: 1
+                )
+                // Without a width on the table itself, the automatic layout
+                // treats these as preferred column widths.
+                block.setValue(columnWidths[column], type: .absoluteValueType, for: .width)
+                block.setWidth(5, type: .absoluteValueType, for: .padding, edge: .minY)
+                block.setWidth(5, type: .absoluteValueType, for: .padding, edge: .maxY)
+                block.setWidth(10, type: .absoluteValueType, for: .padding, edge: .minX)
+                block.setWidth(10, type: .absoluteValueType, for: .padding, edge: .maxX)
+                if rowIndex == 0 {
+                    block.setWidth(1, type: .absoluteValueType, for: .border, edge: .maxY)
+                    block.setBorderColor(MarkdownTheme.tableHeaderRuleColor, for: .maxY)
+                } else if rowIndex > 1 {
+                    block.setWidth(1, type: .absoluteValueType, for: .border, edge: .minY)
+                    block.setBorderColor(MarkdownTheme.ruleColor, for: .minY)
+                }
+
+                content.append(NSAttributedString(string: "\n", attributes: [.font: MarkdownTheme.bodyFont]))
+                let style = NSMutableParagraphStyle()
+                style.textBlocks = [block]
+                style.lineHeightMultiple = MarkdownTheme.lineHeightMultiple
+                // The table's own margin is ignored, so the last row's
+                // cells carry the space after the table.
+                if rowIndex == contents.count - 1 {
+                    style.paragraphSpacing = MarkdownTheme.tableSpacingAfter
+                }
+                switch column < alignments.count ? alignments[column] : nil {
+                case .center: style.alignment = .center
+                case .right: style.alignment = .right
+                default: style.alignment = .left
+                }
+                let full = NSRange(location: 0, length: content.length)
+                content.addAttribute(.paragraphStyle, value: style, range: full)
+                content.addAttribute(.markdownTableRow, value: rowIndex, range: full)
+                result.append(content)
+            }
+        }
+        return result
+    }
+    #elseif canImport(UIKit)
+    /// Lays a table out as an aligned monospaced grid inside a code card,
+    /// since UIKit has no text tables.
+    private func renderGridTable(_ rows: [[String]]) -> NSMutableAttributedString {
         let columnCount = rows.map(\.count).max() ?? 0
         var widths = [Int](repeating: 3, count: columnCount)
         for row in rows {
@@ -271,6 +439,7 @@ public struct MarkdownRenderer: MarkupVisitor {
         }
         return result
     }
+    #endif
 
     // MARK: - Inline
 
@@ -285,6 +454,7 @@ public struct MarkdownRenderer: MarkupVisitor {
         let content = NSMutableAttributedString()
         for child in emphasis.children { content.append(visit(child)) }
         restyleFonts(in: content, transform: platformItalicFont(from:))
+        addInlineStyle(.italic, to: content)
         return content
     }
 
@@ -292,6 +462,7 @@ public struct MarkdownRenderer: MarkupVisitor {
         let content = NSMutableAttributedString()
         for child in strong.children { content.append(visit(child)) }
         restyleFonts(in: content, transform: platformBoldFont(from:))
+        addInlineStyle(.bold, to: content)
         return content
     }
 
@@ -303,6 +474,7 @@ public struct MarkdownRenderer: MarkupVisitor {
             value: NSUnderlineStyle.single.rawValue,
             range: NSRange(location: 0, length: content.length)
         )
+        addInlineStyle(.strikethrough, to: content)
         return content
     }
 
@@ -310,7 +482,8 @@ public struct MarkdownRenderer: MarkupVisitor {
         NSMutableAttributedString(string: inlineCode.code, attributes: [
             .font: MarkdownTheme.codeFont,
             .foregroundColor: MarkdownTheme.textColor,
-            .backgroundColor: MarkdownTheme.codeBackgroundColor
+            .backgroundColor: MarkdownTheme.codeBackgroundColor,
+            .markdownInlineStyle: MarkdownInlineStyle.code
         ])
     }
 
@@ -363,6 +536,42 @@ public struct MarkdownRenderer: MarkupVisitor {
     }
 
     // MARK: - Helpers
+
+    private mutating func pushContainer(_ kind: MarkdownBlockContext.ContainerKind) {
+        nextBlockID += 1
+        containers.append(MarkdownBlockContext.Container(id: nextBlockID, kind: kind))
+    }
+
+    /// Records that all of `content` renders one leaf block nested in the
+    /// current containers; see `MarkdownBlockContext`.
+    private mutating func tag(_ content: NSMutableAttributedString, as leaf: MarkdownBlockContext.Leaf) {
+        nextBlockID += 1
+        let context = MarkdownBlockContext(id: nextBlockID, leaf: leaf, containers: containers)
+        content.addAttribute(.markdownBlockContext, value: context, range: NSRange(location: 0, length: content.length))
+    }
+
+    /// Makes sure a whole list is followed by at least
+    /// `MarkdownTheme.listSpacingAfter`, whatever its last block is.
+    private func addSpacingAfterList(to result: NSMutableAttributedString) {
+        guard result.length > 0 else { return }
+        // The text system reads paragraph spacing from a paragraph's first
+        // character, so restyle the whole last paragraph.
+        let lastParagraph = (result.string as NSString).paragraphRange(for: NSRange(location: result.length - 1, length: 0))
+        guard let style = result.attribute(.paragraphStyle, at: lastParagraph.location, effectiveRange: nil) as? NSParagraphStyle,
+              style.paragraphSpacing < MarkdownTheme.listSpacingAfter,
+              let spaced = style.mutableCopy() as? NSMutableParagraphStyle
+        else { return }
+        spaced.paragraphSpacing = MarkdownTheme.listSpacingAfter
+        result.addAttribute(.paragraphStyle, value: spaced, range: lastParagraph)
+    }
+
+    private func addInlineStyle(_ style: MarkdownInlineStyle, to content: NSMutableAttributedString) {
+        let full = NSRange(location: 0, length: content.length)
+        content.enumerateAttribute(.markdownInlineStyle, in: full) { value, range, _ in
+            let existing = (value as? MarkdownInlineStyle) ?? []
+            content.addAttribute(.markdownInlineStyle, value: existing.union(style), range: range)
+        }
+    }
 
     private func restyleFonts(in content: NSMutableAttributedString, transform: (PlatformFont) -> PlatformFont) {
         let full = NSRange(location: 0, length: content.length)

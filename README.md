@@ -13,6 +13,9 @@ A fast, native Markdown *reader* for macOS — like Typora, minus the editor.
 - Sets itself as the default app for `.md` / `.markdown` / `.mkdn` files.
 - Light/dark appearance toggle (toolbar button or the Appearance menu),
   independent of your system setting — defaults to light.
+- Copying a selection puts HTML on the clipboard alongside RTF, so pasting
+  into Gmail or another browser-based app keeps headings, lists, links,
+  code, and tables instead of dropping to plain text.
 
 It intentionally doesn't edit or save — it's a viewer, not an IDE.
 
@@ -100,10 +103,17 @@ and `UITextView` on iOS (`iOS/Tickline/MarkdownTextView.swift`) — that
 draws the full-width code block cards and block-quote bars itself, since
 `NSAttributedString.backgroundColor` only paints behind glyphs.
 
+The renderer also tags each block and inline run with its Markdown
+structure (`MarkdownBlockContext.swift`), which is what lets
+`MarkdownHTMLExporter` turn an arbitrary selection back into nested HTML
+when the Mac app copies it.
+
 ## Known limitations
 
-- Tables render as an aligned monospace grid rather than a real ruled
-  table — good enough to read, not fancy.
+- On iOS, tables render as an aligned monospace grid rather than a real
+  ruled table. (The Mac app lays them out as real tables.) In a narrow
+  window, a Mac table's columns shrink in proportion, which can split a
+  long word across lines.
 - Remote (`http`/`https`) images show as a clickable link rather than
   loading inline, to keep launch fast and dependency-free.
 - `.mdown` / `.mkd` extensions are owned by Typora's own file type on

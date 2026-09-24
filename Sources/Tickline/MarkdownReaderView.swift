@@ -11,7 +11,7 @@ struct MarkdownReaderView: View {
 
     var body: some View {
         MarkdownScrollView(text: text, fileURL: fileURL)
-            .background(Color(nsColor: .textBackgroundColor))
+            .background(Color(nsColor: MarkdownTheme.backgroundColor))
             .frame(minWidth: 420, minHeight: 320)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -37,6 +37,9 @@ private struct MarkdownScrollView: NSViewRepresentable {
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.textContainerInset = NSSize(width: 0, height: 32)
+        // The text column fills the window's width, less this margin on
+        // each side, so widening the window unwraps long lines and tables.
+        textView.textContainer?.lineFragmentPadding = 28
         textView.textContainer?.widthTracksTextView = true
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false

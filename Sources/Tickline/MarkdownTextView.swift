@@ -2,26 +2,28 @@ import AppKit
 import TicklineKit
 
 /// A read-only text view that draws full-width backgrounds for code blocks
-/// and a side bar for block quotes before its glyphs, and keeps its content
-/// centered in a comfortable reading column as the window resizes.
+/// and a side bar for block quotes before its glyphs, and copies selections
+/// as HTML as well as RTF and plain text.
 final class MarkdownTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
         drawCustomBlockDecorations()
         super.draw(dirtyRect)
     }
 
-    override func layout() {
-        super.layout()
-        updateReadingWidth()
+    // Browser-based apps like Gmail ignore RTF and fall back to plain text,
+    // so copies and drags also carry an HTML version of the selection.
+    override var writablePasteboardTypes: [NSPasteboard.PasteboardType] {
+        super.writablePasteboardTypes + [.html]
     }
 
-    private func updateReadingWidth() {
-        guard let container = textContainer, let scrollView = enclosingScrollView else { return }
-        let available = scrollView.contentSize.width
-        let horizontalPadding = max(28, (available - MarkdownTheme.readingWidth) / 2)
-        if container.lineFragmentPadding != horizontalPadding {
-            container.lineFragmentPadding = horizontalPadding
+    override func writeSelection(to pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        guard type == .html, let textStorage else {
+            return super.writeSelection(to: pboard, type: type)
         }
+        let fragments = selectedRanges.map {
+            MarkdownHTMLExporter.html(from: textStorage, range: $0.rangeValue)
+        }
+        return pboard.setString("<meta charset=\"utf-8\">" + fragments.joined(), forType: .html)
     }
 
     private func drawCustomBlockDecorations() {
